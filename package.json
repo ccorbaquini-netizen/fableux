@@ -1,10 +1,17 @@
-{
-  "name": "fableux",
-  "version": "1.0.0",
-  "description": "Copiloto de UI/UX para Claude Code — perfil Fable 5, economia máxima de tokens, convive com Ruflo",
-  "type": "module",
-  "bin": { "fableux": "./cli.js" },
-  "files": ["cli.js", "templates"],
-  "engines": { "node": ">=18" },
-  "license": "MIT"
+﻿{
+    "name":  "fableux",
+    "version":  "1.1.0",
+    "description":  "Copiloto de UI/UX para Claude Code â€” perfil Fable 5, economia mÃ¡xima de tokens, convive com Ruflo",
+    "type":  "module",
+    "bin":  {
+                "fableux":  "./cli.js"
+            },
+    "files":  [
+                  "cli.js",
+                  "templates"
+              ],
+    "engines":  {
+                    "node":  "\u003e=18"
+                },
+    "license":  "MIT"
 }

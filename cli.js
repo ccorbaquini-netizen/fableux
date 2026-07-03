@@ -26,7 +26,51 @@ const copies = [
   ['kb/mobile.md', '.fableux/kb/mobile.md'],
   ['kb/checklist.md', '.fableux/kb/checklist.md'],
   ['kb/profile.md', '.fableux/kb/profile.md'],
+  ['guard.mjs', '.fableux/guard.mjs'],
 ];
+
+const GUARD_CMD = 'node .fableux/guard.mjs';
+
+// instala o hook de guarda em .claude/settings.local.json (merge seguro, idempotente)
+function mergeGuardHook() {
+  const p = path.join(CWD, '.claude', 'settings.local.json');
+  let cfg = {};
+  if (fs.existsSync(p)) {
+    try { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { cfg = {}; }
+  }
+  cfg.hooks = cfg.hooks || {};
+  cfg.hooks.PreToolUse = cfg.hooks.PreToolUse || [];
+  const jaTem = JSON.stringify(cfg.hooks.PreToolUse).includes('fableux/guard');
+  if (!jaTem) {
+    cfg.hooks.PreToolUse.push({
+      matcher: 'Read',
+      hooks: [{ type: 'command', command: GUARD_CMD }],
+    });
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+    console.log('  + .claude/settings.local.json (hook de guarda de leitura — determinístico)');
+  } else {
+    console.log('  ~ .claude/settings.local.json (hook de guarda já presente)');
+  }
+}
+
+function removeGuardHook() {
+  const p = path.join(CWD, '.claude', 'settings.local.json');
+  if (!fs.existsSync(p)) return;
+  try {
+    const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (cfg.hooks?.PreToolUse) {
+      cfg.hooks.PreToolUse = cfg.hooks.PreToolUse.filter(
+        (h) => !JSON.stringify(h).includes('fableux/guard')
+      );
+      if (cfg.hooks.PreToolUse.length === 0) delete cfg.hooks.PreToolUse;
+      if (Object.keys(cfg.hooks).length === 0) delete cfg.hooks;
+      if (Object.keys(cfg).length === 0) fs.rmSync(p);
+      else fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+      console.log('  - hook de guarda removido (resto do settings.local.json intacto)');
+    }
+  } catch { /* settings ilegível: não toca */ }
+}
 
 function mergeClaudeMd() {
   const section = fs.readFileSync(path.join(TPL, 'claude-section.md'), 'utf8').trim();
@@ -59,6 +103,7 @@ function init() {
     console.log(`  ${existed ? '~' : '+'} ${dst}`);
   }
   mergeClaudeMd();
+  if (!process.argv.includes('--no-guard')) mergeGuardHook();
   console.log(`\nPronto. Abra o Claude Code neste projeto e use:
   /ux-review   auditoria de UI/UX (só diagnóstico)
   /ux-polish   aplicar movimento e efeitos
@@ -69,6 +114,7 @@ Base de conhecimento (carregada só sob demanda): .fableux/kb/\n`);
 }
 
 function remove() {
+  removeGuardHook();
   for (const [, dst] of copies) {
     const p = path.join(CWD, dst);
     if (fs.existsSync(p)) { fs.rmSync(p); console.log(`  - ${dst}`); }
