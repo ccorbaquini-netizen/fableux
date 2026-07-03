@@ -4,7 +4,9 @@
 
 import fs from 'node:fs';
 
-const LIMITE_LINHAS = 350;
+// 600: bloqueia só leituras realmente caras — limiar baixo demais gera ciclos
+// de retry (turno extra + churn de cache) que custam mais do que economizam
+const LIMITE_LINHAS = 600;
 const LIXO = /node_modules|[\\/]dist[\\/]|[\\/]build[\\/]|package-lock\.json|yarn\.lock|pnpm-lock|\.min\.(js|css)$|\.map$/;
 
 let input = '';
