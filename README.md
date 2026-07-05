@@ -42,6 +42,23 @@ A maior economia vem da arquitetura, não de instruções:
 - **Statusline**: linha fixa no prompt — `⚡ Fableux | Fable 5 | poupado ~12k tok na sessão (4) · ~85k total (31) | $0.42` — custo zero de tokens (é só UI).
 - **Interruptor**: crie o arquivo `.fableux/off` para desligar a guarda (efeito imediato, ideal para refatoração ampla/auditoria que exige leitura integral); apague para religar. A statusline indica `⏸ guard OFF`. Alternativas: `FABLEUX_OFF=1` (sessão inteira) e `FABLEUX_LIMITE=N` (muda o limiar de 600 linhas).
 
+## Benchmark (v1.4.2)
+
+Medido em benchmark A/B: projeto sintético de 6,9k linhas duplicado em dois braços idênticos (com e sem Fableux), três camadas — simulação determinística com os hooks reais, métricas de qualidade isoladas e execuções reais `claude -p` (Haiku) com a mesma tarefa nos dois braços.
+
+| Métrica | Sem Fableux | Com Fableux |
+|---|---|---|
+| Tokens em 4 fluxos típicos de leitura (simulado) | 42.170 | **4.702 (−89%)** |
+| Custo real E2E, 2 tarefas idênticas | $0,1460 | **$0,0666 (−54%)** |
+| Tokens novos em cache no E2E | 63.142 | **18.025 (−71%)** |
+| Respostas corretas no E2E | 2/2 | 2/2 |
+
+- **Digest**: 99,7% das funções (346/347) mapeadas com número de linha exato; zero linhas erradas.
+- **Verificar (hook Stop)**: 3/3 erros de sintaxe capturados antes da entrega, zero falso positivo; bug semântico não é pego (`node --check` não é linter).
+- **Custo do mecanismo**: ~300 ms por Read (startup do Node no Windows) e 1–2 turnos a mais quando há bloqueio (~2× o tempo de parede da tarefa no E2E) — troca-se tempo por tokens. Onde não há arquivo grande, releitura nem artefato, nada muda.
+
+O braço "com" contabiliza tudo que a ferramenta custa (mensagem de bloqueio, digest completo e a leitura dirigida que ainda acontece). O efeito real tende a ser maior: cada token que entra no contexto é reenviado em todos os turnos seguintes da sessão.
+
 ## Perfil Fable 5
 
 O Fableux faz o modelo operar como o Fable: **verificar antes de afirmar** (rodar o app/testes e ler a saída real), reportar falhas na íntegra e em primeiro lugar, separar explicitamente o que foi testado do que não foi, mudanças pequenas e reversíveis no estilo do código existente, e parar no diagnóstico quando o usuário descreveu um problema sem pedir correção. A matriz de validação por tipo de mudança está em `.fableux/kb/profile.md`.
