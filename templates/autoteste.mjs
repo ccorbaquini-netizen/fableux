@@ -148,6 +148,42 @@ fs.writeFileSync('tv.jsonl', edicao(path.join('fixtures', 'valido.mjs')));
 r = roda('verificar.mjs', { session_id: 'vv', transcript_path: 'tv.jsonl' });
 ok('verificar: arquivo válido encerra normal', r.code === 0);
 
+// ---------- verificar + TypeScript (tsc do projeto simulado por stub) ----------
+// O stub grava um marcador quando invocado e devolve o conteúdo de tsc-saida.txt,
+// permitindo testar a lógica de baseline sem depender do pacote typescript.
+fs.mkdirSync(path.join('node_modules', 'typescript', 'lib'), { recursive: true });
+fs.writeFileSync(path.join('node_modules', 'typescript', 'lib', 'tsc.js'),
+  "const fs=require('fs');fs.writeFileSync('tsc-chamado.txt','1');let o='';try{o=fs.readFileSync('tsc-saida.txt','utf8')}catch{}process.stdout.write(o);process.exit(o.trim()?2:0);\n");
+fs.writeFileSync(path.join('fixtures', 'app.ts'), 'export const x: number = 1;\n');
+fs.writeFileSync('tt.jsonl', edicao(path.join('fixtures', 'app.ts')));
+fs.writeFileSync('tsc-saida.txt', 'fixtures/app.ts(1,1): error TS1111: antigo um.\n');
+
+r = roda('verificar.mjs', { session_id: 'ts0', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: sem tsconfig fica inerte', r.code === 0 && !fs.existsSync('tsc-chamado.txt'));
+fs.writeFileSync('tsconfig.json', '{"compilerOptions":{"strict":true}}');
+r = roda('verificar.mjs', { session_id: 'vv2', transcript_path: 'tv.jsonl' });
+ok('verificar/ts: turno só-JS não invoca o tsc', r.code === 0 && !fs.existsSync('tsc-chamado.txt'));
+
+fs.writeFileSync('tsc-saida.txt', 'fixtures/app.ts(1,1): error TS1111: antigo um.\nfixtures/app.ts(2,1): error TS2222: antigo dois.\n');
+const baseTs = () => JSON.parse(fs.readFileSync(path.join('.fableux', 'cache', 'ts-baseline.json'), 'utf8'));
+r = roda('verificar.mjs', { session_id: 'ts1', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: 1ª rodada cria baseline sem bloquear', r.code === 0 && baseTs().length === 2 && fs.existsSync('tsc-chamado.txt'));
+r = roda('verificar.mjs', { session_id: 'ts2', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: erros pré-existentes não bloqueiam', r.code === 0);
+fs.appendFileSync('tsc-saida.txt', 'fixtures/app.ts(9,9): error TS3333: novinho.\n');
+r = roda('verificar.mjs', { session_id: 'ts3', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: erro novo bloqueia e cita só ele', r.code === 2 && /TS3333/.test(r.err) && !/TS1111/.test(r.err));
+r = roda('verificar.mjs', { session_id: 'ts3', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: teto vale também para TS (2/2)', r.code === 2 && /2\/2/.test(r.err));
+r = roda('verificar.mjs', { session_id: 'ts3', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: 3ª tentativa solta o turno', r.code === 0);
+fs.writeFileSync('tsc-saida.txt', 'fixtures/app.ts(2,1): error TS2222: antigo dois.\n');
+r = roda('verificar.mjs', { session_id: 'ts4', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: baseline encolhe quando erro some', r.code === 0 && baseTs().length === 1);
+fs.writeFileSync('tsc-saida.txt', 'fixtures/app.ts(1,1): error TS1111: antigo um.\nfixtures/app.ts(2,1): error TS2222: antigo dois.\n');
+r = roda('verificar.mjs', { session_id: 'ts5', transcript_path: 'tt.jsonl' });
+ok('verificar/ts: erro corrigido que voltou bloqueia', r.code === 2 && /TS1111/.test(r.err));
+
 // ---------- permcount ----------
 r = roda('permcount.mjs', { session_id: 'p1', message: 'Claude is waiting for your input' });
 const permAntes = fs.existsSync(path.join('.fableux', 'cache', 'permissoes.jsonl')) ? fs.readFileSync(path.join('.fableux', 'cache', 'permissoes.jsonl'), 'utf8') : '';
@@ -171,7 +207,7 @@ fs.rmSync(path.join('.fableux', 'off'));
 const LOG = path.join('.fableux', 'cache', 'economia.jsonl');
 {
   const velhas = [];
-  for (let i = 0; i < 9000; i++) velhas.push(JSON.stringify({ t: '2026-01-01T00:00:00Z', sid: 'antiga' + (i % 7), arquivo: 'x'.repeat(60), tipo: 'grande', linhas: 700, tok: 100 }));
+  for (let i = 0; i < 9000; i++) velhas.push(JSON.stringify({ t: '2026-01-01T00:00:00Z', sid: 'antiga' + (i % 7), arquivo: 'x'.repeat(60), tipo: i % 2 ? 'lixo' : 'grande', linhas: 700, tok: 100 }));
   velhas.push(JSON.stringify({ t: '2026-01-02T00:00:00Z', sid: 'atual', arquivo: 'a.js', tipo: 'releitura', tok: 50 }));
   velhas.push(JSON.stringify({ t: '2026-01-02T00:00:01Z', sid: 'atual', arquivo: 'b.js', tipo: 'grande', tok: 70 }));
   fs.writeFileSync(LOG, velhas.join('\n') + '\n');
@@ -179,11 +215,20 @@ const LOG = path.join('.fableux', 'cache', 'economia.jsonl');
 r = roda('statusline.mjs', { session_id: 'atual', model: modelo });
 saida = semCor(r.out);
 ok('statusline: totais corretos no prompt que rotaciona', saida.includes('poupou 120') && saida.includes('900.1k total'));
-const depois = fs.readFileSync(LOG, 'utf8').trim().split('\n');
-const saldo = JSON.parse(depois[0]);
-ok('rotação: log encolhe para saldo + sessão atual', depois.length === 3 && saldo.tipo === 'saldo' && saldo.tok === 900000 && saldo.n === 9000);
+const depois = fs.readFileSync(LOG, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const saldos = depois.filter((e) => e.tipo === 'saldo');
+ok('rotação: log encolhe para saldos por tipo + sessão atual', depois.length === 4 && saldos.length === 2 && ['grande', 'lixo'].every((t) => saldos.some((s) => s.de === t && s.tok === 450000 && s.n === 4500)));
 r = roda('statusline.mjs', { session_id: 'atual', model: modelo });
 ok('rotação: totais idênticos após compactar', semCor(r.out).includes('poupou 120') && semCor(r.out).includes('900.1k total'));
+
+// ---------- cli.js stats (roda só a partir do repo, onde cli.js existe) ----------
+const CLI = path.join(AQUI, '..', 'cli.js');
+if (fs.existsSync(CLI)) {
+  const rs = spawnSync(process.execPath, [CLI, 'stats'], { cwd: SANDBOX, encoding: 'utf8', timeout: 30000 });
+  ultimo = { code: rs.status, out: rs.stdout || '', err: rs.stderr || '' };
+  const so = semCor(rs.stdout || '');
+  ok('stats: total, tipos e top arquivos', rs.status === 0 && so.includes('900.1k') && so.includes('grande') && so.includes('b.js'));
+}
 
 // ---------- resultado ----------
 process.chdir(os.tmpdir());

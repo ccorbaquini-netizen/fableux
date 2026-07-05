@@ -219,11 +219,45 @@ function remove() {
   console.log('Fableux removido.');
 }
 
+// resumo da economia registrada no economia.jsonl do projeto atual
+function stats() {
+  const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
+  const p = path.join(CWD, '.fableux', 'cache', 'economia.jsonl');
+  if (!fs.existsSync(p)) { console.log('Sem dados: .fableux/cache/economia.jsonl não existe (nenhum bloqueio registrado ainda).'); return; }
+  const porTipo = {}, porDia = {}, porArquivo = {};
+  let tok = 0, n = 0;
+  for (const linha of fs.readFileSync(p, 'utf8').split('\n')) {
+    if (!linha.trim()) continue;
+    let e; try { e = JSON.parse(linha); } catch { continue; }
+    const tipo = e.tipo === 'saldo' ? `${e.de || '?'} (histórico)` : (e.tipo || '?');
+    const qtd = e.n || 1;
+    tok += e.tok || 0; n += qtd;
+    (porTipo[tipo] = porTipo[tipo] || { tok: 0, n: 0 });
+    porTipo[tipo].tok += e.tok || 0; porTipo[tipo].n += qtd;
+    if (e.tipo !== 'saldo') {
+      const dia = (e.t || '').slice(0, 10) || '?';
+      porDia[dia] = (porDia[dia] || 0) + (e.tok || 0);
+      if (e.arquivo) porArquivo[e.arquivo] = (porArquivo[e.arquivo] || 0) + (e.tok || 0);
+    }
+  }
+  console.log(`\nFableux stats — economia registrada no projeto (estimativa de ~4 chars/token)\n`);
+  console.log(`Total: ~${fmt(tok)} tokens poupados em ${n} bloqueios\n`);
+  console.log('Por tipo:');
+  for (const [t, s] of Object.entries(porTipo).sort((a, b) => b[1].tok - a[1].tok)) console.log(`  ${t.padEnd(24)} ~${fmt(s.tok).padStart(8)} tok  (${s.n}×)`);
+  const dias = Object.entries(porDia).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14);
+  if (dias.length) { console.log('\nÚltimos dias com registro:'); for (const [d, t] of dias) console.log(`  ${d}  ~${fmt(t)} tok`); }
+  const top = Object.entries(porArquivo).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (top.length) { console.log('\nTop arquivos (bloqueio recorrente = candidato a dividir):'); for (const [a, t] of top) console.log(`  ~${fmt(t).padStart(8)} tok  ${a}`); }
+  console.log('\nHistórico compactado pela rotação aparece como "(histórico)", sem data nem arquivo.');
+}
+
 const cmd = process.argv[2];
 if (cmd === 'init' || cmd === 'update') init();
 else if (cmd === 'remove') remove();
+else if (cmd === 'stats') stats();
 else console.log(`Fableux — copiloto de UI/UX para Claude Code
 
 Uso:
   npx github:ccorbaquini-netizen/fableux init     instala/atualiza no projeto atual
+  npx github:ccorbaquini-netizen/fableux stats    resumo da economia registrada no projeto
   npx github:ccorbaquini-netizen/fableux remove   desinstala (preserva o resto do CLAUDE.md)`);

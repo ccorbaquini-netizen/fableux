@@ -39,9 +39,10 @@ process.stdin.on('end', () => {
   const sid = data.session_id;
   const modelo = data.model?.display_name || '';
 
-  let tokSessao = 0, tokTotal = 0, nTotal = 0, nSessao = 0;
+  let tokSessao = 0, tokTotal = 0, nTotal = 0;
   let bruto = '';
   const linhasSessao = [];
+  const saldoPorTipo = {};
   try {
     bruto = fs.readFileSync(LOG, 'utf8');
     for (const linha of bruto.split('\n')) {
@@ -49,19 +50,26 @@ process.stdin.on('end', () => {
       try {
         const e = JSON.parse(linha);
         tokTotal += e.tok || 0; nTotal += e.n || 1;
-        if (e.sid === sid) { tokSessao += e.tok || 0; nSessao++; linhasSessao.push(linha); }
+        if (e.sid === sid) { tokSessao += e.tok || 0; linhasSessao.push(linha); }
+        else {
+          const t = e.tipo === 'saldo' ? (e.de || 'historico') : (e.tipo || 'historico');
+          (saldoPorTipo[t] = saldoPorTipo[t] || { tok: 0, n: 0 });
+          saldoPorTipo[t].tok += e.tok || 0; saldoPorTipo[t].n += e.n || 1;
+        }
       } catch { /* linha corrompida: ignora */ }
     }
   } catch { /* sem log ainda */ }
 
   // Rotação: o log cresce sem limite e é reparseado a cada prompt. Acima de
-  // 1MB, compacta o histórico num único registro de saldo (tipo "saldo", campo
-  // "n" preserva a contagem), mantendo intactas as linhas da sessão atual.
+  // 1MB, compacta o histórico num registro de saldo POR TIPO (campo "de"; "n"
+  // preserva a contagem — o cli.js stats agrega por ele), mantendo intactas as
+  // linhas da sessão atual. Data e arquivo do histórico são descartados.
   // Corrida com um append do guard no meio perde no máximo uma linha de estimativa.
   if (bruto.length > 1_000_000) {
     try {
-      const saldo = JSON.stringify({ t: new Date().toISOString(), tipo: 'saldo', tok: tokTotal - tokSessao, n: nTotal - nSessao });
-      fs.writeFileSync(LOG, [saldo, ...linhasSessao].join('\n') + '\n');
+      const agora = new Date().toISOString();
+      const saldos = Object.entries(saldoPorTipo).map(([de, s]) => JSON.stringify({ t: agora, tipo: 'saldo', de, tok: s.tok, n: s.n }));
+      fs.writeFileSync(LOG, [...saldos, ...linhasSessao].join('\n') + '\n');
     } catch { /* rotação nunca pode quebrar a statusline */ }
   }
 
