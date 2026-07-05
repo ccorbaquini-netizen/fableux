@@ -72,15 +72,28 @@ process.stdin.on('end', () => {
     }
   }
 
+  // Limites de uso do plano (janelas de 5 horas e 7 dias), quando informados.
+  const rl5 = data.rate_limits?.five_hour;
+  const rl7 = data.rate_limits?.seven_day;
+  const hora = (epoch) => {
+    const d = new Date(epoch * 1000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
   // Linha 2: UM conselho por vez, por extenso, em ordem de urgência.
   let aviso = '', corAviso = AM;
   if (pct != null && pct >= 80) {
     corAviso = VM;
     aviso = `Contexto ${pct}% cheio — digite /compact (resume e continua) ou /clear (recomeça do zero) AGORA.`;
+  } else if (rl5 && rl5.used_percentage >= 85) {
+    if (rl5.used_percentage >= 95) corAviso = VM;
+    aviso = `Limite de 5 horas ${Math.round(rl5.used_percentage)}% usado — libera às ${rl5.resets_at ? hora(rl5.resets_at) : '?'}; deixe o restante para o essencial.`;
   } else if (pct != null && pct >= 60) {
     aviso = `Contexto ${pct}% cheio — quando pausar, digite /compact para resumir a conversa e liberar espaço.`;
   } else if (janela === 1_000_000 && usados >= 180_000) {
     aviso = 'Passando de 200 mil tokens o preço por token dobra — digite /clear se puder trocar de assunto.';
+  } else if (rl7 && rl7.used_percentage >= 90) {
+    aviso = `Limite semanal ${Math.round(rl7.used_percentage)}% usado — priorize só o essencial até o reset.`;
   } else if (desligado) {
     aviso = 'Fableux pausado — apague o arquivo .fableux/off para voltar a economizar tokens.';
   }

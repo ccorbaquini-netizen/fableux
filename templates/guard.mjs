@@ -27,6 +27,42 @@ function logEconomia(sid, arquivo, tipo, linhas, tok) {
   } catch { /* log nunca pode quebrar o hook */ }
 }
 
+// Registro de leituras integrais da sessão: sid|caminho -> {mtime, pos, t}.
+// "pos" é o tamanho do transcript no momento da leitura: se depois disso houve
+// compactação (/compact), o conteúdo saiu da memória do modelo e a releitura
+// volta a ser legítima — só se bloqueia releitura de arquivo inalterado E
+// ainda presente no contexto.
+const LEITURAS = '.fableux/cache/leituras.json';
+
+function lerRegistro() {
+  try { return JSON.parse(fs.readFileSync(LEITURAS, 'utf8')); } catch { return {}; }
+}
+
+function gravarRegistro(reg) {
+  try {
+    const chaves = Object.keys(reg);
+    if (chaves.length > 300) {
+      for (const k of chaves.sort((a, b) => (reg[a].t || 0) - (reg[b].t || 0)).slice(0, chaves.length - 300)) delete reg[k];
+    }
+    fs.mkdirSync('.fableux/cache', { recursive: true });
+    fs.writeFileSync(LEITURAS, JSON.stringify(reg));
+  } catch { /* registro nunca pode quebrar o hook */ }
+}
+
+// Houve /compact desde a posição "pos" do transcript? Lê só o trecho novo.
+function compactouDesde(transcriptPath, pos) {
+  try {
+    const tam = fs.statSync(transcriptPath).size;
+    if (tam < pos) return true; // transcript encolheu/trocou: assume novo contexto
+    if (tam === pos) return false;
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(tam - pos);
+    fs.readSync(fd, buf, 0, buf.length, pos);
+    fs.closeSync(fd);
+    return /compact_boundary|isCompactSummary/.test(buf.toString('utf8'));
+  } catch { return true; } // sem transcript legível: não bloqueia releitura
+}
+
 let input = '';
 process.stdin.on('data', (c) => { input += c; });
 process.stdin.on('end', () => {
@@ -47,6 +83,19 @@ process.stdin.on('end', () => {
   try {
     const conteudo = fs.readFileSync(p, 'utf8');
     const linhas = conteudo.split('\n').length;
+
+    // Releitura: mesmo arquivo, mesma sessão, mtime igual, sem /compact no meio
+    // → o conteúdo ainda está no contexto do modelo; reler só duplica tokens.
+    const mtime = fs.statSync(p).mtimeMs;
+    const chave = `${data.session_id}|${p}`;
+    const reg = lerRegistro();
+    const ant = reg[chave];
+    if (ant && ant.mtime === mtime && data.transcript_path && !compactouDesde(data.transcript_path, ant.pos)) {
+      logEconomia(data.session_id, p, 'releitura', linhas, conteudo.length / 4);
+      console.error(`Fableux guard: você já leu "${p}" integralmente nesta sessão e ele não mudou desde então — o conteúdo ainda está no seu contexto; use-o. Para conferir um trecho específico, use Read com offset/limit.`);
+      process.exit(2);
+    }
+
     if (linhas > LIMITE_LINHAS) {
       // Gera o digest na hora do bloqueio: o modelo recebe o mapa pronto em vez
       // de gastar um turno com grep às cegas.
@@ -61,6 +110,12 @@ process.stdin.on('end', () => {
       console.error(`Fableux guard: "${p}" tem ${linhas} linhas. Não leia integral — ${dica}, com Read offset/limit. Releia integral só se realmente for editar o arquivo inteiro.`);
       process.exit(2);
     }
+
+    // Leitura integral permitida: registra para detectar releitura futura.
+    let pos = 0;
+    try { pos = data.transcript_path ? fs.statSync(data.transcript_path).size : 0; } catch { /* sem transcript */ }
+    reg[chave] = { mtime, pos, t: Date.now() };
+    gravarRegistro(reg);
   } catch { /* arquivo inexistente/binário: deixa o Read falhar sozinho */ }
   process.exit(0);
 });

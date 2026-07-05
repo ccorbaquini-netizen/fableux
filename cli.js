@@ -30,11 +30,13 @@ const copies = [
   ['digest.mjs', '.fableux/digest.mjs'],
   ['statusline.mjs', '.fableux/statusline.mjs'],
   ['permcount.mjs', '.fableux/permcount.mjs'],
+  ['verificar.mjs', '.fableux/verificar.mjs'],
 ];
 
 const GUARD_CMD = 'node .fableux/guard.mjs';
 const STATUS_CMD = 'node .fableux/statusline.mjs';
 const PERM_CMD = 'node .fableux/permcount.mjs';
+const STOP_CMD = 'node .fableux/verificar.mjs';
 
 // instala o hook de guarda em .claude/settings.local.json (merge seguro, idempotente)
 function mergeGuardHook() {
@@ -97,6 +99,26 @@ function mergePermHook() {
   }
 }
 
+// verificação de sintaxe ao fim do turno (hook Stop): segura a entrega se um
+// .js editado não passa em node --check, no máximo 2 voltas
+function mergeStopHook() {
+  const p = path.join(CWD, '.claude', 'settings.local.json');
+  let cfg = {};
+  if (fs.existsSync(p)) {
+    try { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { cfg = {}; }
+  }
+  cfg.hooks = cfg.hooks || {};
+  cfg.hooks.Stop = cfg.hooks.Stop || [];
+  if (!JSON.stringify(cfg.hooks.Stop).includes('fableux/verificar')) {
+    cfg.hooks.Stop.push({ hooks: [{ type: 'command', command: STOP_CMD }] });
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+    console.log('  + hook Stop (node --check nos .js editados antes de encerrar o turno)');
+  } else {
+    console.log('  ~ hook Stop já presente');
+  }
+}
+
 function removeGuardHook() {
   const p = path.join(CWD, '.claude', 'settings.local.json');
   if (!fs.existsSync(p)) return;
@@ -110,6 +132,10 @@ function removeGuardHook() {
       if (cfg.hooks.Notification) {
         cfg.hooks.Notification = cfg.hooks.Notification.filter((h) => !JSON.stringify(h).includes('fableux/permcount'));
         if (cfg.hooks.Notification.length === 0) delete cfg.hooks.Notification;
+      }
+      if (cfg.hooks.Stop) {
+        cfg.hooks.Stop = cfg.hooks.Stop.filter((h) => !JSON.stringify(h).includes('fableux/verificar'));
+        if (cfg.hooks.Stop.length === 0) delete cfg.hooks.Stop;
       }
       if (Object.keys(cfg.hooks).length === 0) delete cfg.hooks;
       if (/fableux/.test(cfg.statusLine?.command || '')) delete cfg.statusLine;
@@ -151,7 +177,7 @@ function init() {
     console.log(`  ${existed ? '~' : '+'} ${dst}`);
   }
   mergeClaudeMd();
-  if (!process.argv.includes('--no-guard')) { mergeGuardHook(); mergeStatusLine(); mergePermHook(); }
+  if (!process.argv.includes('--no-guard')) { mergeGuardHook(); mergeStatusLine(); mergePermHook(); mergeStopHook(); }
   console.log(`\nPronto. Abra o Claude Code neste projeto e use:
   /ux-review   auditoria de UI/UX (só diagnóstico)
   /ux-polish   aplicar movimento e efeitos
