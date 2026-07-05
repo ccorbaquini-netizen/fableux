@@ -1,6 +1,6 @@
 {
   "name": "fableux",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Copiloto de UI/UX para Claude Code — perfil Fable 5, economia máxima de tokens, convive com Ruflo",
   "type": "module",
   "bin": { "fableux": "./cli.js" },

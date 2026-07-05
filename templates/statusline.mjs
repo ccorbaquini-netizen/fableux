@@ -67,6 +67,21 @@ process.stdin.on('end', () => {
     else ctx = `ctx ${pct}%`;
   }
 
+  // Fricção de permissões: sugere /fewer-permission-prompts quando a sessão
+  // acumula pedidos ou o allowlist local incha com entradas descartáveis.
+  let perm = '';
+  try {
+    const nPerm = fs.readFileSync('.fableux/cache/permissoes.jsonl', 'utf8')
+      .split('\n').filter((l) => l.includes(`"${sid}"`)).length;
+    if (nPerm >= 5) perm = `\x1b[33m${nPerm} pedidos de permissão → rode /fewer-permission-prompts\x1b[0m`;
+  } catch { /* sem contador ainda */ }
+  if (!perm) {
+    try {
+      const allow = JSON.parse(fs.readFileSync('.claude/settings.local.json', 'utf8')).permissions?.allow || [];
+      if (allow.length >= 20) perm = `\x1b[33mallowlist com ${allow.length} entradas → /fewer-permission-prompts limpa e consolida\x1b[0m`;
+    } catch { /* sem settings local */ }
+  }
+
   const partes = [
     `\x1b[36m⚡ Fableux\x1b[0m${desligado ? ' \x1b[33m⏸ guard OFF\x1b[0m' : ''}`,
     modelo,
@@ -74,6 +89,7 @@ process.stdin.on('end', () => {
     nTotal === 0
       ? 'sem bloqueios ainda'
       : `poupado ~\x1b[32m${fmt(tokSessao)}\x1b[0m tok na sessão (${nSessao}) · ~${fmt(tokTotal)} total (${nTotal})`,
+    perm,
   ];
   if (typeof custo === 'number') partes.push(`$${custo.toFixed(2)}`);
   console.log(partes.filter(Boolean).join(' \x1b[90m|\x1b[0m '));

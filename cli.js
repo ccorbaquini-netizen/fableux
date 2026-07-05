@@ -29,10 +29,12 @@ const copies = [
   ['guard.mjs', '.fableux/guard.mjs'],
   ['digest.mjs', '.fableux/digest.mjs'],
   ['statusline.mjs', '.fableux/statusline.mjs'],
+  ['permcount.mjs', '.fableux/permcount.mjs'],
 ];
 
 const GUARD_CMD = 'node .fableux/guard.mjs';
 const STATUS_CMD = 'node .fableux/statusline.mjs';
+const PERM_CMD = 'node .fableux/permcount.mjs';
 
 // instala o hook de guarda em .claude/settings.local.json (merge seguro, idempotente)
 function mergeGuardHook() {
@@ -76,6 +78,25 @@ function mergeStatusLine() {
   }
 }
 
+// contador de pedidos de permissão (alimenta a sugestão de /fewer-permission-prompts)
+function mergePermHook() {
+  const p = path.join(CWD, '.claude', 'settings.local.json');
+  let cfg = {};
+  if (fs.existsSync(p)) {
+    try { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { cfg = {}; }
+  }
+  cfg.hooks = cfg.hooks || {};
+  cfg.hooks.Notification = cfg.hooks.Notification || [];
+  if (!JSON.stringify(cfg.hooks.Notification).includes('fableux/permcount')) {
+    cfg.hooks.Notification.push({ hooks: [{ type: 'command', command: PERM_CMD }] });
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+    console.log('  + hook Notification (contador de pedidos de permissão)');
+  } else {
+    console.log('  ~ hook Notification já presente');
+  }
+}
+
 function removeGuardHook() {
   const p = path.join(CWD, '.claude', 'settings.local.json');
   if (!fs.existsSync(p)) return;
@@ -86,6 +107,10 @@ function removeGuardHook() {
         (h) => !JSON.stringify(h).includes('fableux/guard')
       );
       if (cfg.hooks.PreToolUse.length === 0) delete cfg.hooks.PreToolUse;
+      if (cfg.hooks.Notification) {
+        cfg.hooks.Notification = cfg.hooks.Notification.filter((h) => !JSON.stringify(h).includes('fableux/permcount'));
+        if (cfg.hooks.Notification.length === 0) delete cfg.hooks.Notification;
+      }
       if (Object.keys(cfg.hooks).length === 0) delete cfg.hooks;
       if (/fableux/.test(cfg.statusLine?.command || '')) delete cfg.statusLine;
       if (Object.keys(cfg).length === 0) fs.rmSync(p);
@@ -126,7 +151,7 @@ function init() {
     console.log(`  ${existed ? '~' : '+'} ${dst}`);
   }
   mergeClaudeMd();
-  if (!process.argv.includes('--no-guard')) { mergeGuardHook(); mergeStatusLine(); }
+  if (!process.argv.includes('--no-guard')) { mergeGuardHook(); mergeStatusLine(); mergePermHook(); }
   console.log(`\nPronto. Abra o Claude Code neste projeto e use:
   /ux-review   auditoria de UI/UX (só diagnóstico)
   /ux-polish   aplicar movimento e efeitos
