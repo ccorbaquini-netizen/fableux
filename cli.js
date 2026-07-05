@@ -27,9 +27,12 @@ const copies = [
   ['kb/checklist.md', '.fableux/kb/checklist.md'],
   ['kb/profile.md', '.fableux/kb/profile.md'],
   ['guard.mjs', '.fableux/guard.mjs'],
+  ['digest.mjs', '.fableux/digest.mjs'],
+  ['statusline.mjs', '.fableux/statusline.mjs'],
 ];
 
 const GUARD_CMD = 'node .fableux/guard.mjs';
+const STATUS_CMD = 'node .fableux/statusline.mjs';
 
 // instala o hook de guarda em .claude/settings.local.json (merge seguro, idempotente)
 function mergeGuardHook() {
@@ -54,6 +57,25 @@ function mergeGuardHook() {
   }
 }
 
+// statusline com economia em tempo real — só instala se o projeto não tiver uma própria
+function mergeStatusLine() {
+  const p = path.join(CWD, '.claude', 'settings.local.json');
+  let cfg = {};
+  if (fs.existsSync(p)) {
+    try { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { cfg = {}; }
+  }
+  if (!cfg.statusLine) {
+    cfg.statusLine = { type: 'command', command: STATUS_CMD };
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+    console.log('  + statusLine (economia de tokens em tempo real no prompt)');
+  } else if (!/fableux/.test(cfg.statusLine.command || '')) {
+    console.log('  ! statusLine própria do projeto mantida — troque para "' + STATUS_CMD + '" se quiser a do Fableux');
+  } else {
+    console.log('  ~ statusLine do Fableux já presente');
+  }
+}
+
 function removeGuardHook() {
   const p = path.join(CWD, '.claude', 'settings.local.json');
   if (!fs.existsSync(p)) return;
@@ -65,9 +87,10 @@ function removeGuardHook() {
       );
       if (cfg.hooks.PreToolUse.length === 0) delete cfg.hooks.PreToolUse;
       if (Object.keys(cfg.hooks).length === 0) delete cfg.hooks;
+      if (/fableux/.test(cfg.statusLine?.command || '')) delete cfg.statusLine;
       if (Object.keys(cfg).length === 0) fs.rmSync(p);
       else fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
-      console.log('  - hook de guarda removido (resto do settings.local.json intacto)');
+      console.log('  - hook de guarda e statusline removidos (resto do settings.local.json intacto)');
     }
   } catch { /* settings ilegível: não toca */ }
 }
@@ -103,14 +126,18 @@ function init() {
     console.log(`  ${existed ? '~' : '+'} ${dst}`);
   }
   mergeClaudeMd();
-  if (!process.argv.includes('--no-guard')) mergeGuardHook();
+  if (!process.argv.includes('--no-guard')) { mergeGuardHook(); mergeStatusLine(); }
   console.log(`\nPronto. Abra o Claude Code neste projeto e use:
   /ux-review   auditoria de UI/UX (só diagnóstico)
   /ux-polish   aplicar movimento e efeitos
   /ux-mobile   caça aos bugs clássicos de mobile
 
-O perfil Fable e a economia de tokens valem para TODA a sessão.
-Base de conhecimento (carregada só sob demanda): .fableux/kb/\n`);
+Guarda de leitura: arquivos > 600 linhas geram digest em .fableux/cache/
+(mapa estrutural que substitui a leitura integral). Cada bloqueio é logado
+em .fableux/cache/economia.jsonl e a statusline mostra o total poupado.
+  desligar p/ revisão profunda:  crie o arquivo .fableux/off (efeito imediato)
+  religar:                       apague .fableux/off
+  limiar por sessão:             variável FABLEUX_LIMITE (padrão 600)\n`);
 }
 
 function remove() {
@@ -118,6 +145,10 @@ function remove() {
   for (const [, dst] of copies) {
     const p = path.join(CWD, dst);
     if (fs.existsSync(p)) { fs.rmSync(p); console.log(`  - ${dst}`); }
+  }
+  for (const extra of ['.fableux/cache', '.fableux/off']) {
+    const p = path.join(CWD, extra);
+    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
   }
   for (const dir of ['.fableux/kb', '.fableux']) {
     const p = path.join(CWD, dir);

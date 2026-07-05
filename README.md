@@ -22,15 +22,25 @@ Atualizar: rode `init` de novo (idempotente). Remover: `npx --yes github:ccorbaq
 | `.claude/commands/ux-mobile.md` | `/ux-mobile` — caça os 9 bugs clássicos de mobile (zoom, font boosting, safe-area...) |
 | `.claude/agents/fableux-designer.md` | Agente especialista delegável |
 | `.fableux/kb/*.md` | Base de conhecimento (receitas de efeitos, Motion, mobile, checklists) — **carregada só sob demanda** |
+| `.fableux/guard.mjs` | Hook PreToolUse: bloqueia leitura integral de arquivo > 600 linhas e de artefatos (lockfiles, `dist/`) |
+| `.fableux/digest.mjs` | Gera o **digest** (mapa estrutural com nº de linha) do arquivo bloqueado, em `.fableux/cache/` |
+| `.fableux/statusline.mjs` | Statusline do Claude Code com a **economia de tokens em tempo real** (sessão e total) |
 
 ## Como economiza tokens
 
 A maior economia vem da arquitetura, não de instruções:
 
 1. **Pegada fixa mínima** — só ~35 linhas entram em toda sessão; o conhecimento profundo fica em `.fableux/kb/` e o modelo abre **um único arquivo** quando (e se) a tarefa pede.
-2. **Regras duras de leitura** — grep antes de ler, leitura por intervalo de linhas, nunca reler arquivo inalterado, citar `arquivo:linha` em vez de colar código.
-3. **Sem subagentes espontâneos** — cada spawn re-deriva contexto que a sessão já tem.
-4. **Respostas enxutas** — resultado primeiro, sem re-narrar plano, sem colar arquivos.
+2. **Guarda determinística + digest** — o hook bloqueia Read integral de arquivo grande e entrega no lugar um mapa estrutural (assinaturas + nº de linha, gerado por regex — nunca resumo de LLM, logo sem alucinação). O modelo lê ~60 linhas em vez de milhares e vai direto ao trecho certo com offset/limit. Economia típica de 75–90% por acesso a arquivo grande.
+3. **Regras duras de leitura** — grep antes de ler, leitura por intervalo de linhas, nunca reler arquivo inalterado, citar `arquivo:linha` em vez de colar código.
+4. **Sem subagentes espontâneos** — cada spawn re-deriva contexto que a sessão já tem.
+5. **Respostas enxutas** — resultado primeiro, sem re-narrar plano, sem colar arquivos.
+
+## Medição e controle
+
+- **Log de economia**: cada bloqueio grava tokens poupados (estimados) em `.fableux/cache/economia.jsonl`.
+- **Statusline**: linha fixa no prompt — `⚡ Fableux | Fable 5 | poupado ~12k tok na sessão (4) · ~85k total (31) | $0.42` — custo zero de tokens (é só UI).
+- **Interruptor**: crie o arquivo `.fableux/off` para desligar a guarda (efeito imediato, ideal para refatoração ampla/auditoria que exige leitura integral); apague para religar. A statusline indica `⏸ guard OFF`. Alternativas: `FABLEUX_OFF=1` (sessão inteira) e `FABLEUX_LIMITE=N` (muda o limiar de 600 linhas).
 
 ## Perfil Fable 5
 
@@ -47,7 +57,7 @@ O Fableux faz o modelo operar como o Fable: **verificar antes de afirmar** (roda
 
 - A seção no `CLAUDE.md` fica entre os marcadores `<!-- fableux:start/end -->` — o `init` atualiza só esse trecho e o `remove` apaga só ele.
 - Todos os arquivos são namespaceados (`fableux-*`, `.fableux/`, `ux-*`) — nenhuma colisão com os comandos/agentes do Ruflo.
-- Nenhum hook, daemon ou processo em background: o Fableux é 100% estático (instruções + conhecimento), custo zero quando não usado.
+- Um único hook (PreToolUse em Read, o guard) e uma statusline, ambos processos Node instantâneos e sem daemon; o `remove` desfaz os dois preservando o resto do settings. Instale sem o hook com `init --no-guard`.
 
 ## Licença
 
