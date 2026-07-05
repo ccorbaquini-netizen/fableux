@@ -39,17 +39,31 @@ process.stdin.on('end', () => {
   const sid = data.session_id;
   const modelo = data.model?.display_name || '';
 
-  let tokSessao = 0, tokTotal = 0, nTotal = 0;
+  let tokSessao = 0, tokTotal = 0, nTotal = 0, nSessao = 0;
+  let bruto = '';
+  const linhasSessao = [];
   try {
-    for (const linha of fs.readFileSync(LOG, 'utf8').split('\n')) {
+    bruto = fs.readFileSync(LOG, 'utf8');
+    for (const linha of bruto.split('\n')) {
       if (!linha.trim()) continue;
       try {
         const e = JSON.parse(linha);
-        tokTotal += e.tok || 0; nTotal++;
-        if (e.sid === sid) tokSessao += e.tok || 0;
+        tokTotal += e.tok || 0; nTotal += e.n || 1;
+        if (e.sid === sid) { tokSessao += e.tok || 0; nSessao++; linhasSessao.push(linha); }
       } catch { /* linha corrompida: ignora */ }
     }
   } catch { /* sem log ainda */ }
+
+  // Rotação: o log cresce sem limite e é reparseado a cada prompt. Acima de
+  // 1MB, compacta o histórico num único registro de saldo (tipo "saldo", campo
+  // "n" preserva a contagem), mantendo intactas as linhas da sessão atual.
+  // Corrida com um append do guard no meio perde no máximo uma linha de estimativa.
+  if (bruto.length > 1_000_000) {
+    try {
+      const saldo = JSON.stringify({ t: new Date().toISOString(), tipo: 'saldo', tok: tokTotal - tokSessao, n: nTotal - nSessao });
+      fs.writeFileSync(LOG, [saldo, ...linhasSessao].join('\n') + '\n');
+    } catch { /* rotação nunca pode quebrar a statusline */ }
+  }
 
   const desligado = process.env.FABLEUX_OFF === '1' || fs.existsSync('.fableux/off');
   const custo = data.cost?.total_cost_usd;

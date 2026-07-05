@@ -31,6 +31,7 @@ const copies = [
   ['statusline.mjs', '.fableux/statusline.mjs'],
   ['permcount.mjs', '.fableux/permcount.mjs'],
   ['verificar.mjs', '.fableux/verificar.mjs'],
+  ['autoteste.mjs', '.fableux/autoteste.mjs'],
 ];
 
 const GUARD_CMD = 'node .fableux/guard.mjs';

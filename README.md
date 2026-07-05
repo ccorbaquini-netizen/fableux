@@ -25,6 +25,7 @@ Atualizar: rode `init` de novo (idempotente). Remover: `npx --yes github:ccorbaq
 | `.fableux/guard.mjs` | Hook PreToolUse: bloqueia leitura integral de arquivo > 600 linhas e de artefatos (lockfiles, `dist/`) |
 | `.fableux/digest.mjs` | Gera o **digest** (mapa estrutural com nº de linha) do arquivo bloqueado, em `.fableux/cache/` |
 | `.fableux/statusline.mjs` | Statusline do Claude Code com a **economia de tokens em tempo real** (sessão e total) |
+| `.fableux/autoteste.mjs` | Bateria de autoteste dos hooks (34 casos, sandbox isolada) — roda no CI em Linux e Windows |
 
 ## Como economiza tokens
 
@@ -41,6 +42,7 @@ A maior economia vem da arquitetura, não de instruções:
 - **Log de economia**: cada bloqueio grava tokens poupados (estimados) em `.fableux/cache/economia.jsonl`.
 - **Statusline**: linha fixa no prompt — `⚡ Fableux | Fable 5 | poupado ~12k tok na sessão (4) · ~85k total (31) | $0.42` — custo zero de tokens (é só UI).
 - **Interruptor**: crie o arquivo `.fableux/off` para desligar a guarda (efeito imediato, ideal para refatoração ampla/auditoria que exige leitura integral); apague para religar. A statusline indica `⏸ guard OFF`. Alternativas: `FABLEUX_OFF=1` (sessão inteira) e `FABLEUX_LIMITE=N` (muda o limiar de 600 linhas).
+- **Autoteste**: `node .fableux/autoteste.mjs` roda a bateria completa dos hooks em sandbox. Rode após atualizar o Claude Code — os hooks dependem do formato interno do transcript, que não é API pública.
 
 ## Benchmark (v1.4.2)
 

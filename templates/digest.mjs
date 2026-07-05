@@ -66,8 +66,18 @@ export function digestFor(arquivo) {
   let esqueleto = extrairEsqueleto(rel, linhas);
   let nota = '';
   if (esqueleto.length > MAX_LINHAS_DIGEST) {
-    nota = `\n… ${esqueleto.length - MAX_LINHAS_DIGEST} entradas omitidas — use grep para o restante.`;
-    esqueleto = esqueleto.slice(0, MAX_LINHAS_DIGEST);
+    // Acima do teto, corta primeiro o que menos orienta a navegação (imports,
+    // const/let do topo do arquivo), preservando funções/classes/headings e a
+    // ordem original das entradas mantidas.
+    const PRIORIDADE = /\b(function|class|def|interface|enum)\b|^L\d+: (#{1,6} |@|<)/;
+    const alta = esqueleto.filter((e) => PRIORIDADE.test(e));
+    const mantidos = new Set(alta.slice(0, MAX_LINHAS_DIGEST));
+    for (const e of esqueleto) {
+      if (mantidos.size >= MAX_LINHAS_DIGEST) break;
+      mantidos.add(e);
+    }
+    nota = `\n… ${esqueleto.length - mantidos.size} entradas omitidas (imports/const primeiro) — use grep para o restante.`;
+    esqueleto = esqueleto.filter((e) => mantidos.has(e));
   }
   if (esqueleto.length === 0) esqueleto = linhas.slice(0, 40).map((l, i) => `L${i + 1}: ${l.trim().slice(0, MAX_LARGURA)}`);
 
