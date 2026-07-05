@@ -52,45 +52,43 @@ process.stdin.on('end', () => {
 
   const desligado = process.env.FABLEUX_OFF === '1' || fs.existsSync('.fableux/off');
   const custo = data.cost?.total_cost_usd;
+  const AM = (t) => `\x1b[33m${t}\x1b[0m`;
+  const VM = (t) => `\x1b[31m${t}\x1b[0m`;
 
-  // Revisor: % da janela ocupado + sugestão no limiar certo. 80%: agir já
-  // (auto-compact é caro e lossy); 60%: compactar num ponto de pausa.
+  // O terminal trunca a statusline na largura da tela: segmentos curtos e no
+  // máximo UM aviso por vez, em ordem de urgência.
   let ctx = '';
+  let aviso = '';
   const usados = data.transcript_path ? contextoAtual(data.transcript_path) : null;
   if (usados) {
     const janela = /\[1m\]/.test(data.model?.id || '') ? 1_000_000 : 200_000;
     const pct = Math.round((usados / janela) * 100);
-    if (pct >= 80) ctx = `\x1b[31mctx ${pct}% → /clear ou /compact AGORA\x1b[0m`;
-    else if (pct >= 60) ctx = `\x1b[33mctx ${pct}% → /compact na próxima pausa\x1b[0m`;
-    // janela 1M: acima de 200k o preço por token DOBRA — o degrau é econômico
-    else if (janela === 1_000_000 && usados >= 180_000) ctx = `\x1b[33mctx ${fmt(usados)} → perto de 200k o preço dobra; /clear ou /compact\x1b[0m`;
-    else ctx = `ctx ${pct}%`;
+    ctx = `ctx ${pct}%`;
+    if (pct >= 80) { ctx = VM(ctx); aviso = VM('⚠ AGORA /clear ou /compact'); }
+    else if (pct >= 60) { ctx = AM(ctx); aviso = AM('⚠ /compact na pausa'); }
+    // janela 1M: acima de 200k tokens o preço por token dobra
+    else if (janela === 1_000_000 && usados >= 180_000) aviso = AM('⚠ >200k preço 2x → /clear');
   }
-
-  // Fricção de permissões: sugere /fewer-permission-prompts quando a sessão
-  // acumula pedidos ou o allowlist local incha com entradas descartáveis.
-  let perm = '';
-  try {
-    const nPerm = fs.readFileSync('.fableux/cache/permissoes.jsonl', 'utf8')
-      .split('\n').filter((l) => l.includes(`"${sid}"`)).length;
-    if (nPerm >= 5) perm = `\x1b[33m${nPerm} pedidos de permissão → rode /fewer-permission-prompts\x1b[0m`;
-  } catch { /* sem contador ainda */ }
-  if (!perm) {
+  if (!aviso) {
+    try {
+      const nPerm = fs.readFileSync('.fableux/cache/permissoes.jsonl', 'utf8')
+        .split('\n').filter((l) => l.includes(`"${sid}"`)).length;
+      if (nPerm >= 5) aviso = AM(`⚠ /fewer-permission-prompts (${nPerm} pedidos)`);
+    } catch { /* sem contador ainda */ }
+  }
+  if (!aviso) {
     try {
       const allow = JSON.parse(fs.readFileSync('.claude/settings.local.json', 'utf8')).permissions?.allow || [];
-      if (allow.length >= 20) perm = `\x1b[33mallowlist com ${allow.length} entradas → /fewer-permission-prompts limpa e consolida\x1b[0m`;
+      if (allow.length >= 20) aviso = AM(`⚠ /fewer-permission-prompts (${allow.length} regras)`);
     } catch { /* sem settings local */ }
   }
 
   const partes = [
-    `\x1b[36m⚡ Fableux\x1b[0m${desligado ? ' \x1b[33m⏸ guard OFF\x1b[0m' : ''}`,
-    modelo,
+    `\x1b[36m⚡\x1b[0m ${modelo}${desligado ? AM(' ⏸') : ''}`,
     ctx,
-    nTotal === 0
-      ? 'sem bloqueios ainda'
-      : `poupado ~\x1b[32m${fmt(tokSessao)}\x1b[0m tok na sessão (${nSessao}) · ~${fmt(tokTotal)} total (${nTotal})`,
-    perm,
+    nTotal > 0 ? `\x1b[32m▼${fmt(tokSessao)}\x1b[0m·${fmt(tokTotal)}` : '',
+    typeof custo === 'number' ? `$${custo.toFixed(2)}` : '',
+    aviso,
   ];
-  if (typeof custo === 'number') partes.push(`$${custo.toFixed(2)}`);
   console.log(partes.filter(Boolean).join(' \x1b[90m|\x1b[0m '));
 });
