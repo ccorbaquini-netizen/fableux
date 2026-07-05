@@ -201,7 +201,7 @@ function remove() {
     const p = path.join(CWD, extra);
     if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
   }
-  for (const dir of ['.fableux/kb', '.fableux']) {
+  for (const dir of ['.fableux/kb', '.fableux', '.claude/agents', '.claude/commands', '.claude']) {
     const p = path.join(CWD, dir);
     if (fs.existsSync(p) && fs.readdirSync(p).length === 0) fs.rmdirSync(p);
   }
