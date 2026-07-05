@@ -59,7 +59,10 @@ function compactouDesde(transcriptPath, pos) {
     const buf = Buffer.alloc(tam - pos);
     fs.readSync(fd, buf, 0, buf.length, pos);
     fs.closeSync(fd);
-    return /compact_boundary|isCompactSummary/.test(buf.toString('utf8'));
+    // Casa a forma JSON estrutural (aspas sem escape = entrada de nível de
+    // topo do transcript). Conteúdo de arquivo lido vai para o transcript com
+    // aspas escapadas (\"), então texto que cita esses campos não dispara.
+    return /"subtype":"compact_boundary"|"isCompactSummary":true/.test(buf.toString('utf8'));
   } catch { return true; } // sem transcript legível: não bloqueia releitura
 }
 
@@ -72,10 +75,9 @@ process.stdin.on('end', () => {
 
   const p = data.tool_input?.file_path || '';
   if (LIXO.test(p)) {
-    try {
-      const bytes = fs.statSync(p).size;
-      logEconomia(data.session_id, p, 'lixo', null, bytes / 4);
-    } catch { /* sem stat, loga sem estimativa */ }
+    let bytes = 0;
+    try { bytes = fs.statSync(p).size; } catch { /* sem stat, loga sem estimativa */ }
+    logEconomia(data.session_id, p, 'lixo', null, bytes / 4);
     console.error(`Fableux guard: "${p}" é artefato/lixo — não leia; use grep se precisar de algo específico.`);
     process.exit(2);
   }
