@@ -134,10 +134,14 @@ process.stdin.on('end', () => {
   }
 
   const corCtx = pct >= 80 ? VM : pct >= 60 ? AM : (t) => t;
+  // % de economia da sessão: quanto o contexto ficou menor do que ficaria se as
+  // leituras bloqueadas tivessem entrado inteiras (poupado / (poupado + usado)).
+  const pctEco = usados != null && usados > 0 && tokSessao > 0
+    ? Math.round((tokSessao / (tokSessao + usados)) * 100) : null;
   const partes = [
     `\x1b[36m⚡\x1b[0m ${modelo}${desligado ? AM(' ⏸') : ''}`,
     pct != null ? corCtx(`contexto ${pct}%`) : '',
-    nTotal > 0 ? `\x1b[32mpoupou ${fmt(tokSessao)}\x1b[0m · ${fmt(tokTotal)} total` : '',
+    nTotal > 0 ? `\x1b[32mpoupou ${fmt(tokSessao)}${pctEco != null ? ` (−${pctEco}%)` : ''}\x1b[0m · ${fmt(tokTotal)} total` : '',
     typeof custo === 'number' ? `$${custo.toFixed(2)}` : '',
   ];
   console.log(partes.filter(Boolean).join(' \x1b[90m|\x1b[0m '));
