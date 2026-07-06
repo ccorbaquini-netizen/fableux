@@ -20,6 +20,12 @@ function contaLogada() {
   } catch { return ''; }
 }
 
+// Pasta do projeto — lê do stdin (workspace.current_dir) ou extrai do cwd.
+function pastaAtual(data) {
+  const cwd = (data.workspace && data.workspace.current_dir) || process.cwd();
+  return path.basename(cwd) || cwd;
+}
+
 // Fallback para Claude Code antigo (sem context_window no stdin): lê o rabo do
 // transcript e pega o usage da última resposta da API.
 function contextoAtual(transcriptPath) {
@@ -151,8 +157,10 @@ process.stdin.on('end', () => {
   const pctEco = usados != null && usados > 0 && tokSessao > 0
     ? Math.round((tokSessao / (tokSessao + usados)) * 100) : null;
   const conta = contaLogada();
+  const pasta = pastaAtual(data);
   const partes = [
     `\x1b[36m⚡\x1b[0m ${modelo}${desligado ? AM(' ⏸') : ''}`,
+    `📁 ${pasta}`,
     pct != null ? corCtx(`contexto ${pct}%`) : '',
     nTotal > 0 ? `\x1b[32mpoupou ${fmt(tokSessao)}${pctEco != null ? ` (−${pctEco}%)` : ''}\x1b[0m · ${fmt(tokTotal)} total` : '',
     typeof custo === 'number' ? `$${custo.toFixed(2)}` : '',
