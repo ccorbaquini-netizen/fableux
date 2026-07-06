@@ -4,9 +4,21 @@
 // cortado na largura real do terminal (env COLUMNS, Claude Code >= 2.1.153).
 
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const LOG = '.fableux/cache/economia.jsonl';
 const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`);
+
+// Conta logada no Claude Code — o stdin da statusline não traz isso, então lê
+// ~/.claude.json (oauthAccount.emailAddress). Custo zero de tokens: é só UI.
+function contaLogada() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude.json'), 'utf8'));
+    const acc = cfg.oauthAccount || {};
+    return acc.emailAddress || acc.displayName || '';
+  } catch { return ''; }
+}
 
 // Fallback para Claude Code antigo (sem context_window no stdin): lê o rabo do
 // transcript e pega o usage da última resposta da API.
@@ -138,11 +150,13 @@ process.stdin.on('end', () => {
   // leituras bloqueadas tivessem entrado inteiras (poupado / (poupado + usado)).
   const pctEco = usados != null && usados > 0 && tokSessao > 0
     ? Math.round((tokSessao / (tokSessao + usados)) * 100) : null;
+  const conta = contaLogada();
   const partes = [
     `\x1b[36m⚡\x1b[0m ${modelo}${desligado ? AM(' ⏸') : ''}`,
     pct != null ? corCtx(`contexto ${pct}%`) : '',
     nTotal > 0 ? `\x1b[32mpoupou ${fmt(tokSessao)}${pctEco != null ? ` (−${pctEco}%)` : ''}\x1b[0m · ${fmt(tokTotal)} total` : '',
     typeof custo === 'number' ? `$${custo.toFixed(2)}` : '',
+    conta ? `\x1b[90m👤 ${conta}\x1b[0m` : '',
   ];
   console.log(partes.filter(Boolean).join(' \x1b[90m|\x1b[0m '));
 
