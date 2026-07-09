@@ -131,7 +131,7 @@ process.stdin.on('end', () => {
   } else if (pct != null && pct >= 60) {
     aviso = `Contexto ${pct}% cheio — quando pausar, digite /compact para resumir a conversa e liberar espaço.`;
   } else if (janela === 1_000_000 && usados >= 180_000) {
-    aviso = 'Passando de 200 mil tokens o preço por token dobra — digite /clear se puder trocar de assunto.';
+    aviso = `Você está em ${fmt(usados)} tokens — passando de 200 mil o preço por token dobra; digite /clear se puder trocar de assunto.`;
   } else if (rl7 && rl7.used_percentage >= 90) {
     aviso = `Limite semanal ${Math.round(rl7.used_percentage)}% usado — priorize só o essencial até o reset.`;
   } else if (desligado) {
