@@ -161,7 +161,7 @@ process.stdin.on('end', () => {
   const partes = [
     `\x1b[36m⚡\x1b[0m ${modelo}${desligado ? AM(' ⏸') : ''}`,
     `📁 ${pasta}`,
-    pct != null ? corCtx(`contexto ${pct}%`) : '',
+    pct != null ? corCtx(`contexto ${pct}% · ${fmt(usados)}`) : '',
     nTotal > 0 ? `\x1b[32mpoupou ${fmt(tokSessao)}${pctEco != null ? ` (−${pctEco}%)` : ''}\x1b[0m · ${fmt(tokTotal)} total` : '',
     typeof custo === 'number' ? `$${custo.toFixed(2)}` : '',
     conta ? `\x1b[90m👤 ${conta}\x1b[0m` : '',
